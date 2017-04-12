@@ -2,4 +2,4 @@
 
 [![Binder](http://mybinder.org/badge.svg)](http://mybinder.org:/repo/paddykavanagh/pipeline_notebooks)
 
-Collection of pipeline notebooks (test)
+Testing of running pipeline notebooks on Binder
