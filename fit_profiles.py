@@ -40,7 +40,6 @@ class ProcessInput():
         # check that bin_size is positive
         assert self.bin_size > 0, 'bin_size must be > 0'
 
-
     def load(self, file, psffile=None, region='my_region', kernel='gauss',
                  gauss_fwhm=3, profile='postshock', bin_size=5.):
         """
@@ -107,7 +106,6 @@ class ProcessInput():
         if self.psf_filename is not None:
             self.psf_profile_radius = self.psf_profile_regnum * self.bin_size
 
-
     def test_plot_profile(self, plot_type='raw'):
         """
         Do a quick test plot of the loaded data
@@ -147,7 +145,6 @@ class ProcessInput():
         axs.legend(prop={'size':10}, loc=0)
         plt.show()
 
-
     def test_plot_psf(self, plot_type='raw'):
         """
         Do a quick test plot of the loaded psf
@@ -186,6 +183,180 @@ class ProcessInput():
         plt.show()
 
 
+class ProfileModel():
+    """
+    Class to define profile to fit to data. See the individual model methods
+    for descriptions.
+
+    profile:    type of physical profile to fit to the data. Options are:
+                postshock:  exponential decay in the postshock region
+                precursor:  exponential decay in the postshock region with precursor
+                superbubble:exponential decay outward
+                patch:      exponential decay in a spherical cap type postshock region
+    """
+    def __init__(self):
+        print("Creating model...")
+
+        # create the x array for the profile
+        self.profile_radius = np.arange(1., 300., 0.1)
+
+    def postshock(self, a, l, r):
+        """
+        Produce a profile with a jump, then exponential decay in the
+        postshock region.
+
+        :param a:   model normalisation
+        :param l:   shell width
+        :param r:   shell radius
+
+        :returns:   profile model
+        """
+        profile_model = np.zeros(self.profile_radius.shape)
+
+        for n, rad in enumerate(self.profile_radius):
+            if (rad > r):
+                profile_model[n] = 0.0
+            else:
+                profile_model[n] = a * np.exp(-1 * np.absolute((rad - r) / l))
+
+        return profile_model
+
+    def cap(self, a, l, r, w):
+        """
+        Produce a profile of a projected cap of emission on the shell
+
+        :param a:   model normalisation
+        :param l:   shell width
+        :param r:   shell radius
+        :param w:   cap radius
+
+        :returns:   profile model
+        """
+        profile_model = np.zeros(self.profile_radius.shape)
+
+        for n, rad in enumerate(self.profile_radius):
+            if (rad > r):
+                profile_model[n] = 0.0
+            else:
+                profile_model[n] = a * np.exp(-1 * np.absolute((rad - r) / l))
+                if rad <  w:
+                    profile_model[n] = 0
+
+        return profile_model
+
+    def postshock_to_nonzero(self, a, l, r, b):
+        """
+        Produce a profile with a jump, then exponential decay to a non-zero level
+
+        :param a:   model normalisation
+        :param l:   shell width
+        :param r:   shell radius
+        :param b:   non-zero interior level as fraction of a
+
+        :returns:   profile model
+        """
+        profile_model = np.zeros(self.profile_radius.shape)
+
+        for n, rad in enumerate(self.profile_radius):
+            if (rad > r):
+                profile_model[n] = 0.0
+            else:
+                profile_model[n] = (b * a) + (a * np.exp(-1 * np.absolute((rad - r) / l)))
+
+        return profile_model
+
+    def precursor(self, a, l, r, f):
+        """
+        Produce a profile with a precursor component with peak
+        a factor of f less than the postshock component
+
+        x = list of off axis points
+        f = factor of postshock peak in relation to precursor
+        l = shell width
+        r = shell radius
+        """
+        profile_model = np.zeros(self.profile_radius.shape)
+
+        for n, rad in enumerate(self.profile_radius):
+            if (rad > r):
+                profile_model[n] = (a/f) * np.exp(-1*np.absolute((r - rad)/l))
+                # TODO check what the l value should be for a given f (for now just l)
+            else:
+                profile_model[n] = a * np.exp(-1 * np.absolute((rad - r) / l))
+
+        return profile_model
+
+    def superbubble(self, a, l, r):
+        """
+        Produce a profile with a jump, then exponential decay outward
+        (Not very physical, just for curiosity)
+
+        :param a:   model normalisation
+        :param l:   shell width
+        :param r:   shell radius
+
+        :returns:   profile model
+        """
+        profile_model = np.zeros(self.profile_radius.shape)
+
+        for n, rad in enumerate(self.profile_radius):
+            if (rad > r):
+                profile_model[n] = a * np.exp(-1 * np.absolute((r - rad) / l ))
+            else:
+                profile_model[n] = 0
+
+        return profile_model
+
+
+    def create(self, profile, a=1., l=10., r=150., w=120., b=0.2, f=16.):
+        """
+        load the model
+
+        :param profile: profile name.
+        :param a:       model normalisation
+        :param l:       shell width
+        :param r:       shell radius
+        :param w:       cap radius (if cap_profile)
+        :param b:       non-zero interior level as fraction of a (if postshock_to_nonzero)
+        :param f:       factor of postshock peak in relation to precursor (if precursor)
+        """
+        self.profile_name = profile
+
+        if self.profile_name == 'postshock':
+            self.profile_model = self.postshock(a, l, r)
+
+        if self.profile_name == 'cap':
+            self.profile_model = self.cap(a, l, r, w)
+
+        if self.profile_name == 'postshock_to_nonzero':
+            self.profile_model = self.postshock_to_nonzero(a, l, r, b)
+
+        if self.profile_name == 'precursor':
+            self.profile_model = self.precursor(a, l, r, f)
+
+        if self.profile_name == 'superbubble':
+            self.profile_model = self.superbubble(a, l, r)
+
+        return np.array([self.profile_radius, self.profile_model])
+
+
+    def test_plot_profile(self):
+        """
+        Do a quick test plot of the loaded profile
+
+        """
+        fig, axs = plt.subplots(1, 1, figsize=(8, 6))
+        plt.tight_layout(pad=3.0)
+
+        axs.plot(self.profile_radius, self.profile_model, c='b', marker='o', markersize=0, linestyle='-',
+                     linewidth=1.0, label='%s profile' % self.profile_name)
+
+        axs.set_ylabel('Intensity')
+        axs.set_xlabel('Radius (arcsec)')
+        axs.legend(prop={'size':10}, loc=0)
+        plt.show()
+
+
 if __name__ == "__main__":
     """
     Execute the following if called from the command line
@@ -210,6 +381,8 @@ if __name__ == "__main__":
                       help="Size of the profile bins in arcsec", default=5.)
     (options, args) = parser.parse_args()
 
+    # TODO finish the full list of options
+
     # read command line args
     try:
         input_file = args[0]
@@ -224,4 +397,9 @@ if __name__ == "__main__":
         print(parser.print_help())
 
     # create a test plot of the loaded input
-    my_profile.test_plot_profile(plot_type='physical')
+    #my_profile.test_plot_profile(plot_type='physical')
+
+    # create model profile
+    my_model = ProfileModel()
+    profile_data = my_model.create('superbubble', a=10., l=20., r=150.)
+    my_model.test_plot_profile()
